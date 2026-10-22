@@ -28,8 +28,16 @@
 </main>
 
 <script type="module">
-import { upload } from 'https://esm.sh/@vercel/blob@0.27.0/client';
-import { upload } from 'https://esm.sh/@vercel/blob/client';
+let uploadFn;
+async function getUpload() {
+  if (uploadFn) return uploadFn;
+  const srcs = ['https://esm.sh/@vercel/blob@2/client?bundle', 'https://cdn.jsdelivr.net/npm/@vercel/blob@2/+esm'];
+  let err;
+  for (const u of srcs) {
+    try { const m = await import(u); uploadFn = m.upload; if (uploadFn) return uploadFn; } catch (e) { err = e; }
+  }
+  throw new Error('Gagal load library upload: ' + (err && err.message));
+}
 
 const $ = id => document.getElementById(id);
 const fmt = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : (b/1048576).toFixed(1) + ' MB';
@@ -37,8 +45,11 @@ const nameOf = p => p.replace(/^share\//, '').replace(/-[A-Za-z0-9]{20,}(?=\.[^.
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 async function load() {
-  const res = await fetch('/api/list');
-  const files = await res.json();
+  let files;
+  try {
+    const res = await fetch('/api/list');
+    files = await res.json();
+  } catch (e) { $('list').innerHTML = `<li class="text-red-400">${esc(e.message)}</li>`; return; }
   if (!Array.isArray(files)) { $('list').innerHTML = `<li class="text-red-400">${esc(files.error||'Error')}</li>`; return; }
   if (!files.length) { $('list').innerHTML = '<li class="text-slate-500">Belum ada file.</li>'; return; }
   $('list').innerHTML = files.map(f => `
@@ -60,6 +71,7 @@ async function send(files) {
     $('progress').prepend(row);
     const bar = row.querySelector('.bar');
     try {
+      const upload = await getUpload();
       await upload('share/' + file.name, file, {
         access: 'public',
         handleUploadUrl: '/api/upload',
