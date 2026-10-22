@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DropFile</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+<main class="max-w-2xl mx-auto p-4 sm:p-8">
+  <h1 class="text-3xl font-bold mb-1">📦 DropFile</h1>
+  <p class="text-slate-400 mb-6">Upload dari HP, buka di PC. Tanpa login.</p>
+
+  <label id="drop" class="block border-2 border-dashed border-slate-700 rounded-2xl p-10 text-center cursor-pointer hover:border-indigo-500 hover:bg-slate-900 transition">
+    <input id="file" type="file" multiple class="hidden">
+    <div class="text-5xl mb-2">⬆️</div>
+    <div class="font-semibold">Tap / drop file di sini</div>
+    <div class="text-sm text-slate-500">Bisa pilih banyak file sekaligus</div>
+  </label>
+
+  <div id="progress" class="mt-4 space-y-2"></div>
+
+  <div class="flex items-center justify-between mt-8 mb-3">
+    <h2 class="text-xl font-semibold">File</h2>
+    <button id="refresh" class="text-sm px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700">🔄 Refresh</button>
+  </div>
+  <ul id="list" class="space-y-2"><li class="text-slate-500">Memuat...</li></ul>
+</main>
+
+<script type="module">
+import { upload } from 'https://esm.sh/@vercel/blob@0.27.0/client';
+
+const $ = id => document.getElementById(id);
+const fmt = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : (b/1048576).toFixed(1) + ' MB';
+const nameOf = p => p.replace(/^share\//, '').replace(/-[A-Za-z0-9]{20,}(?=\.[^.]+$|$)/, '');
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function load() {
+  const res = await fetch('/api/list');
+  const files = await res.json();
+  if (!Array.isArray(files)) { $('list').innerHTML = `<li class="text-red-400">${esc(files.error||'Error')}</li>`; return; }
+  if (!files.length) { $('list').innerHTML = '<li class="text-slate-500">Belum ada file.</li>'; return; }
+  $('list').innerHTML = files.map(f => `
+    <li class="flex items-center gap-3 bg-slate-900 rounded-xl p-3">
+      <div class="flex-1 min-w-0">
+        <div class="truncate font-medium">${esc(nameOf(f.pathname))}</div>
+        <div class="text-xs text-slate-500">${fmt(f.size)} · ${new Date(f.uploadedAt).toLocaleString('id-ID')}</div>
+      </div>
+      <a href="${f.downloadUrl}" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm">Download</a>
+      <button data-url="${f.url}" class="del px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-red-600 text-sm">🗑</button>
+    </li>`).join('');
+}
+
+async function send(files) {
+  for (const file of files) {
+    const row = document.createElement('div');
+    row.className = 'bg-slate-900 rounded-xl p-3 text-sm';
+    row.innerHTML = `<div class="truncate mb-1">${esc(file.name)}</div><div class="h-2 bg-slate-800 rounded"><div class="bar h-2 bg-indigo-500 rounded" style="width:0%"></div></div>`;
+    $('progress').prepend(row);
+    const bar = row.querySelector('.bar');
+    try {
+      await upload('share/' + file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+        multipart: file.size > 50 * 1024 * 1024,
+        onUploadProgress: e => bar.style.width = e.percentage + '%'
+      });
+      bar.classList.replace('bg-indigo-500', 'bg-emerald-500');
+      setTimeout(() => row.remove(), 2000);
+    } catch (e) {
+      bar.classList.replace('bg-indigo-500', 'bg-red-500');
+      row.insertAdjacentHTML('beforeend', `<div class="text-red-400 mt-1">${esc(e.message)}</div>`);
+    }
+  }
+  load();
+}
+
+$('file').onchange = e => { send([...e.target.files]); e.target.value = ''; };
+const drop = $('drop');
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('border-indigo-500'); };
+drop.ondragleave = () => drop.classList.remove('border-indigo-500');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('border-indigo-500'); send([...e.dataTransfer.files]); };
+$('refresh').onclick = load;
+$('list').onclick = async e => {
+  const b = e.target.closest('.del');
+  if (!b || !confirm('Hapus file ini?')) return;
+  await fetch('/api/delete', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ url: b.dataset.url }) });
+  load();
+};
+load();
+</script>
+</body>
+</html>
