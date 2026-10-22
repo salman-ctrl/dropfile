@@ -29,6 +29,7 @@
 
 <script type="module">
 import { upload } from 'https://esm.sh/@vercel/blob@0.27.0/client';
+import { upload } from 'https://esm.sh/@vercel/blob/client';
 
 const $ = id => document.getElementById(id);
 const fmt = b => b < 1024 ? b + ' B' : b < 1048576 ? (b/1024).toFixed(1) + ' KB' : (b/1048576).toFixed(1) + ' MB';
